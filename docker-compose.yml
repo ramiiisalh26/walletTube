@@ -1,0 +1,217 @@
+# ── Shared Python configuration ────────────────────────────────────────────────
+# All five Python containers are built from the same image; only the command differs.
+x-python-build: &python-build
+  build:
+    context: ./python
+    dockerfile: Dockerfile
+  restart: unless-stopped
+
+x-python-env: &python-env
+  DATABASE_URL: postgresql+asyncpg://ytsearch:ytsearch_dev@postgres:5432/ytsearch
+  REDIS_URL: redis://:redis_dev@redis:6379/0
+  KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+  KAFKA_CONSUMER_GROUP: python-indexer
+  KAFKA_AUTO_OFFSET_RESET: earliest
+  YOUTUBE_API_KEY: AIzaSyC-gn1Lal_jW90RDC4K_M6eoxMcCfofbc8
+  EMBEDDING_MODEL_NAME: BAAI/bge-small-en-v1.5
+  EMBEDDING_BATCH_SIZE: 32
+  EMBEDDING_GRPC_PORT: 50051
+  CHUNK_DURATION_SECONDS: 30
+  CHUNK_OVERLAP_SECONDS: 5
+
+services:
+
+  # ── PostgreSQL + pgvector ────────────────────────────────────────────────────
+  postgres:
+    image: pgvector/pgvector:pg16
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ytsearch
+      POSTGRES_USER: ytsearch
+      POSTGRES_PASSWORD: ytsearch_dev
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ytsearch -d ytsearch"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── Redis (Celery broker + result backend + app cache) ────────────────────────
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: redis-server --requirepass redis_dev
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "redis_dev", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── Kafka (KRaft — no Zookeeper) ─────────────────────────────────────────────
+  kafka:
+    image: bitnami/kafka:3.7
+    restart: unless-stopped
+    environment:
+      KAFKA_CFG_NODE_ID: 1
+      KAFKA_CFG_PROCESS_ROLES: broker,controller
+      KAFKA_CFG_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_CFG_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093,EXTERNAL://:9094
+      KAFKA_CFG_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,EXTERNAL://localhost:9094
+      KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT,EXTERNAL:PLAINTEXT
+      KAFKA_CFG_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_CFG_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_CFG_AUTO_CREATE_TOPICS_ENABLE: "true"
+    ports:
+      - "9094:9094"
+    volumes:
+      - kafka_data:/bitnami/kafka
+    healthcheck:
+      test: ["CMD-SHELL", "kafka-topics.sh --bootstrap-server localhost:9092 --list"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+
+  # ── Python: gRPC Embedding Server ────────────────────────────────────────────
+  # python-search calls EmbedOne here for every search query.
+  # Must be healthy before python-search starts.
+  python-grpc:
+    <<: *python-build
+    command: python -m services.embedding.server
+    ports:
+      - "50051:50051"
+    environment:
+      <<: *python-env
+      EMBEDDING_GRPC_HOST: "0.0.0.0"   # bind all interfaces inside the container
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import socket; s=socket.socket(); s.settimeout(3); s.connect(('localhost',50051)); s.close()\""]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 30s   # model load takes time on first start
+
+  # ── Python: Celery Worker ────────────────────────────────────────────────────
+  # Runs the indexing pipeline: transcript fetch → chunk → embed → DB insert.
+  # Loads the embedding model locally (does not call python-grpc).
+  python-worker:
+    <<: *python-build
+    command: celery -A services.indexing.worker worker --loglevel=info --concurrency=4
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    environment:
+      <<: *python-env
+
+  # ── Python: Celery Beat Scheduler ────────────────────────────────────────────
+  # Fires cron tasks: trending fetch (1h), channel scan (6h),
+  # queue drain (5m), channel discovery (daily), reclassify (weekly).
+  python-beat:
+    <<: *python-build
+    command: celery -A workers.scheduler beat --loglevel=info --schedule=/app/celerybeat/celerybeat-schedule
+    depends_on:
+      redis:
+        condition: service_healthy
+      python-worker:
+        condition: service_started
+    environment:
+      <<: *python-env
+    volumes:
+      - celerybeat_data:/app/celerybeat
+
+  # ── Python: Kafka Consumer ───────────────────────────────────────────────────
+  # Listens to: search.miss, video.index.request,
+  #             user.video.watched, channel.discover.request
+  python-kafka:
+    <<: *python-build
+    command: python -m workers.kafka_consumer
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      python-worker:
+        condition: service_started
+    environment:
+      <<: *python-env
+
+  # ── Python: FastAPI Admin API (internal) ─────────────────────────────────────
+  # Internal admin endpoints: /health, /admin/queue/stats, /admin/index/video, etc.
+  python-api:
+    <<: *python-build
+    command: uvicorn main:app --host 0.0.0.0 --port 8001 --workers 2
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    ports:
+      - "8001:8001"
+    environment:
+      <<: *python-env
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fs http://localhost:8001/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # ── Python: FastAPI Search API (user-facing, replaces Java) ─────────────────
+  # Handles: /api/auth, /api/search, /api/user, /api/billing, /api/ingestion
+  python-search:
+    <<: *python-build
+    command: uvicorn api.main:app --host 0.0.0.0 --port 8080 --workers 4
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      python-grpc:
+        condition: service_healthy
+    ports:
+      - "8080:8080"
+    environment:
+      <<: *python-env
+      JWT_SECRET: change-this-to-a-long-random-string-in-production
+      JWT_EXPIRY_MINUTES: 15
+      JWT_REFRESH_EXPIRY_DAYS: 7
+      EMBEDDING_GRPC_CLIENT_HOST: python-grpc
+      EMBEDDING_GRPC_CLIENT_PORT: 50051
+      SEARCH_MIN_SIMILARITY: 0.60
+      SEARCH_HIGH_QUALITY_THRESHOLD: 0.65
+      SEARCH_FALLBACK_THRESHOLD: 5
+      SEARCH_CACHE_TTL_HOURS: 6
+      YOUTUBE_QUOTA_PER_DAY: 10000
+      YOUTUBE_SEARCH_COST_UNITS: 100
+      YOUTUBE_MAX_RESULTS_PER_SEARCH: 50
+      STRIPE_SECRET_KEY: ""
+      STRIPE_WEBHOOK_SECRET: ""
+      STRIPE_PRO_PRICE_ID: ""
+      STRIPE_TEAM_PRICE_ID: ""
+      STRIPE_SUCCESS_URL: "http://localhost:3000/billing/success"
+      STRIPE_CANCEL_URL: "http://localhost:3000/billing/cancel"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fs http://localhost:8080/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+volumes:
+  postgres_data:
+  redis_data:
+  kafka_data:
+  celerybeat_data:   # persists Celery Beat schedule state across restarts

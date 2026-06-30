@@ -1,0 +1,116 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap");
+
+:root {
+  --scrollbar-thumb: #2a2a2a;
+  --scrollbar-track: transparent;
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+}
+*::-webkit-scrollbar { width: 4px; }
+*::-webkit-scrollbar-track { background: transparent; }
+*::-webkit-scrollbar-thumb {
+  background-color: var(--scrollbar-thumb);
+  border-radius: 2px;
+}
+
+html, body {
+  background-color: #080808;
+  color: #f1f1f1;
+  font-family: "Inter", system-ui, sans-serif;
+  min-height: 100vh;
+}
+
+a, button { transition: color 0.15s ease, background-color 0.15s ease, opacity 0.15s ease; }
+
+/* ── Word-in animation (glass board writing effect) ── */
+@keyframes wordIn {
+  0%   { opacity: 0; transform: translateY(6px) blur(4px); }
+  100% { opacity: 1; transform: translateY(0)   blur(0px); }
+}
+.word-in {
+  display: inline-block;
+  opacity: 0;
+  animation: wordIn 0.28s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+/* ── Card slide-up ── */
+@keyframes cardIn {
+  0%   { opacity: 0; transform: translateY(18px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+.card-in {
+  opacity: 0;
+  animation: cardIn 0.45s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+/* ── Thinking dots ── */
+@keyframes blink {
+  0%, 80%, 100% { opacity: 0.2; transform: scale(0.8); }
+  40%            { opacity: 1;   transform: scale(1); }
+}
+.dot-pulse span {
+  display: inline-block;
+  width: 5px; height: 5px;
+  border-radius: 50%;
+  background: currentColor;
+  animation: blink 1.2s infinite ease-in-out;
+}
+.dot-pulse span:nth-child(2) { animation-delay: 0.2s; }
+.dot-pulse span:nth-child(3) { animation-delay: 0.4s; }
+
+/* ── Glass glow on hover ── */
+@keyframes glowPulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(220, 38, 38, 0); }
+  50%       { box-shadow: 0 0 30px 0 rgba(220, 38, 38, 0.08); }
+}
+
+/* ── Shimmer skeleton ── */
+@keyframes shimmer {
+  0%   { background-position: -400px 0; }
+  100% { background-position:  400px 0; }
+}
+.shimmer {
+  background: linear-gradient(90deg, #1a1a1a 25%, #242424 50%, #1a1a1a 75%);
+  background-size: 800px 100%;
+  animation: shimmer 1.4s infinite;
+}
+
+/* ── Expanded panel fade-slide-in ── */
+@keyframes expandIn {
+  0%   { opacity: 0; transform: translateY(8px) scale(0.99); }
+  100% { opacity: 1; transform: translateY(0)   scale(1); }
+}
+.expand-in {
+  animation: expandIn 0.35s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+/* ── Generic fade-in ── */
+@keyframes fadeIn {
+  0%   { opacity: 0; }
+  100% { opacity: 1; }
+}
+
+/* ── Scan line on thumbnail hover ── */
+@keyframes scanLine {
+  0%   { top: -10%; opacity: 0.5; }
+  100% { top: 110%;  opacity: 0; }
+}
+.group:hover .scan-line {
+  animation: scanLine 0.9s ease-in forwards;
+}
+.scan-line {
+  position: absolute;
+  left: 0; right: 0;
+  height: 2px;
+  background: linear-gradient(transparent, rgba(255,255,255,0.15), transparent);
+  pointer-events: none;
+  top: -10%;
+  opacity: 0;
+}

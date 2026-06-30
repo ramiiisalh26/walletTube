@@ -1,0 +1,33 @@
+# ── Python ────────────────────────────────────────────────────────────────────
+python/.venv/
+python/__pycache__/
+python/**/__pycache__/
+python/**/*.py[cod]
+python/.pytest_cache/
+python/.coverage
+python/htmlcov/
+python/dist/
+python/build/
+
+# ── Secrets — NEVER commit ────────────────────────────────────────────────────
+python/.env
+python/cookies.txt
+front/.env.local
+front/.env.*.local
+**/.env
+**/secrets.*
+
+# ── Frontend ──────────────────────────────────────────────────────────────────
+front/node_modules/
+front/.next/
+front/out/
+front/*.tsbuildinfo
+front/next-env.d.ts
+
+# ── IDE / OS ──────────────────────────────────────────────────────────────────
+.idea/
+.vscode/settings.json
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
