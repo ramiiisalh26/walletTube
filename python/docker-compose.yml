@@ -1,0 +1,103 @@
+services:
+
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: ytsearch-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ytsearch
+      POSTGRES_PASSWORD: ytsearch_dev
+      POSTGRES_DB: ytsearch
+    ports:
+      - "5433:5432"
+    volumes:
+      - yt_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ytsearch -d ytsearch"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: ytsearch-redis
+    restart: unless-stopped
+    command: redis-server --requirepass redis_dev
+    ports:
+      - "6380:6379"
+    volumes:
+      - yt_redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "redis_dev", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  kafka:
+    image: apache/kafka:3.7.0
+    container_name: ytsearch-kafka
+    restart: unless-stopped
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_LISTENERS: PLAINTEXT://kafka:9092,CONTROLLER://kafka:9093,EXTERNAL://0.0.0.0:9094
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,EXTERNAL://localhost:9094
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT,EXTERNAL:PLAINTEXT
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_CLUSTER_ID: ytsearch-kafka-cluster-1
+    ports:
+      - "9094:9094"
+    volumes:
+      - yt_kafka_data:/var/lib/kafka/data
+
+  grpc:
+    build: .
+    container_name: ytsearch-grpc
+    restart: unless-stopped
+    command: python -m services.embedding.server
+    env_file: .env
+    ports:
+      - "50051:50051"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  api:
+    build: .
+    container_name: ytsearch-api
+    restart: unless-stopped
+    command: uvicorn api.main:app --host 0.0.0.0 --port 8000
+    env_file: .env
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      grpc:
+        condition: service_started
+
+  worker:
+    build: .
+    container_name: ytsearch-worker
+    restart: unless-stopped
+    command: python run_indexing.py --watch --batch 20 --interval 60
+    env_file: .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      grpc:
+        condition: service_started
+
+volumes:
+  yt_postgres_data:
+    external: true
+  yt_redis_data:
+    external: true
+  yt_kafka_data:
+    external: true

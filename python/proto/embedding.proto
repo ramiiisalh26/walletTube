@@ -1,0 +1,41 @@
+syntax = "proto3";
+
+package embedding;
+
+option java_package = "com.ytsearch.grpc";
+option java_outer_classname = "EmbeddingProto";
+
+// Shared gRPC contract between Python (server) and Java (client).
+// Compile for Python:
+//   python -m grpc_tools.protoc -I proto \
+//     --python_out=services/embedding \
+//     --grpc_python_out=services/embedding \
+//     proto/embedding.proto
+//
+// Compile for Java: add protobuf-maven-plugin to pom.xml.
+
+service EmbeddingService {
+  // Embed a single text — used for search queries (latency-sensitive).
+  rpc EmbedOne (EmbedOneRequest) returns (EmbedOneResponse);
+
+  // Embed a batch of texts — used by the indexing worker for transcript chunks.
+  rpc EmbedBatch (EmbedBatchRequest) returns (EmbedBatchResponse);
+}
+
+message EmbedOneRequest {
+  string text = 1;
+}
+
+message EmbedOneResponse {
+  // 384 float32 values (BAAI/bge-small-en-v1.5)
+  repeated float vector = 1;
+}
+
+message EmbedBatchRequest {
+  repeated string texts = 1;
+}
+
+message EmbedBatchResponse {
+  // One EmbedOneResponse per input text, same order.
+  repeated EmbedOneResponse embeddings = 1;
+}

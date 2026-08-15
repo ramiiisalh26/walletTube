@@ -1,0 +1,39 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.egg-info/
+dist/
+build/
+*.so
+
+# Virtual environment
+.venv/
+venv/
+env/
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Secrets & credentials — NEVER commit these
+.env
+cookies.txt
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/settings.json
+*.swp
+*.swo
+
+# Alembic generated migration env (optional — remove if you want to track migrations)
+# alembic/versions/
+
+# Proto generated files (keep .proto sources, skip compiled stubs if generated)
+# proto/*_pb2.py
+# proto/*_pb2_grpc.py

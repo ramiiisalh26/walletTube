@@ -1,0 +1,69 @@
+# ── Web framework ─────────────────────────────────────────────────────────────
+fastapi==0.136.3
+uvicorn[standard]==0.30.6
+
+# ── Config ────────────────────────────────────────────────────────────────────
+pydantic-settings==2.4.0
+pydantic[email]==2.9.2
+
+# ── Auth ──────────────────────────────────────────────────────────────────────
+python-jose[cryptography]==3.3.0
+passlib[bcrypt]==1.7.4
+
+# ── Redis (async client for FastAPI) ────────────────────────────────────────
+redis[asyncio]==5.1.1
+
+# ── Billing ───────────────────────────────────────────────────────────────────
+stripe==11.2.0
+
+# ── Database ──────────────────────────────────────────────────────────────────
+sqlalchemy[asyncio]==2.0.35
+asyncpg==0.29.0
+alembic==1.13.3
+pgvector==0.3.2                 # SQLAlchemy type + psycopg2 helpers
+
+# ── Task queue ────────────────────────────────────────────────────────────────
+celery[redis]==5.4.0
+flower==2.0.1                   # Celery monitoring UI (dev)
+
+# ── Kafka ─────────────────────────────────────────────────────────────────────
+confluent-kafka==2.5.0
+
+# ── gRPC ──────────────────────────────────────────────────────────────────────
+grpcio==1.66.1
+grpcio-tools==1.66.1            # protoc compiler (dev)
+
+# ── Embedding model ───────────────────────────────────────────────────────────
+sentence-transformers==3.1.1
+torch==2.6.0                    # CPU-only for local dev; use torch+cu118 on GPU server
+
+# ── YouTube ───────────────────────────────────────────────────────────────────
+google-api-python-client==2.143.0
+youtube-transcript-api==1.2.4
+yt-dlp==2026.3.17
+# curl_cffi: Chrome TLS impersonation for both youtube-transcript-api (http_client)
+# and yt-dlp (--impersonate) — defeats YouTube 429 bot detection.
+# Pin <0.15: yt-dlp 2026.3.17 only supports curl_cffi 0.10.x–0.14.x.
+curl_cffi>=0.10,<0.15
+
+# ── Whisper (optional — only for videos without captions) ────────────────────
+# Requires ffmpeg on PATH. Install: pip install faster-whisper
+faster-whisper==1.2.1
+
+# ── LLM (RAG answer synthesis over retrieved chunks) ─────────────────────────
+anthropic==0.120.2            # >=0.100 required for output_config/effort
+# Also drives every OpenAI-compatible endpoint (Groq, Gemini compat, OpenRouter,
+# Ollama) — only RAG_OPENAI_BASE_URL changes.
+openai==2.52.0
+
+# ── HTTP (async requests) ────────────────────────────────────────────────────
+httpx==0.27.2
+
+# ── Utilities ─────────────────────────────────────────────────────────────────
+tenacity==9.0.0                 # retry logic
+structlog==24.4.0               # structured logging
+numpy==1.26.4
+
+# ── Admin dashboard ───────────────────────────────────────────────────────────
+streamlit==1.58.0
+pandas==2.2.3

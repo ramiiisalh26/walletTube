@@ -8,6 +8,11 @@ python/.coverage
 python/htmlcov/
 python/dist/
 python/build/
+# Celery Beat runtime state (regenerated at runtime)
+python/celerybeat-schedule*
+
+# ── Large / copyrighted binaries — keep out of the repo ───────────────────────
+*.pdf
 
 # ── Secrets — NEVER commit ────────────────────────────────────────────────────
 python/.env

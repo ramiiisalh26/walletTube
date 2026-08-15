@@ -1,0 +1,519 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>YTSearch — Video Metadata Sources</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    font-size: 13px;
+    line-height: 1.6;
+    color: #1a1a2e;
+    background: #fff;
+    padding: 40px 48px;
+    max-width: 1100px;
+    margin: 0 auto;
+  }
+
+  h1 {
+    font-size: 22px;
+    font-weight: 700;
+    color: #0f0f23;
+    margin-bottom: 4px;
+  }
+  .subtitle {
+    font-size: 12px;
+    color: #6b7280;
+    margin-bottom: 32px;
+  }
+
+  h2 {
+    font-size: 14px;
+    font-weight: 700;
+    color: #0f0f23;
+    margin: 28px 0 10px;
+    padding-bottom: 5px;
+    border-bottom: 2px solid #e5e7eb;
+  }
+
+  h3 {
+    font-size: 12px;
+    font-weight: 700;
+    color: #374151;
+    margin: 18px 0 8px;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+  }
+
+  /* ── Tables ─── */
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 20px;
+    font-size: 12px;
+  }
+  thead tr {
+    background: #1e1b4b;
+    color: #fff;
+  }
+  thead th {
+    padding: 8px 12px;
+    text-align: left;
+    font-weight: 600;
+    letter-spacing: .03em;
+  }
+  tbody tr:nth-child(even) { background: #f9fafb; }
+  tbody tr:hover { background: #eff6ff; }
+  tbody td {
+    padding: 7px 12px;
+    border-bottom: 1px solid #e5e7eb;
+    vertical-align: top;
+  }
+  tbody td:first-child {
+    font-family: 'Consolas', monospace;
+    font-size: 11.5px;
+    color: #4f46e5;
+    white-space: nowrap;
+  }
+
+  /* ── Badges ─── */
+  .badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 99px;
+    font-size: 11px;
+    font-weight: 600;
+    white-space: nowrap;
+  }
+  .badge-green  { background: #dcfce7; color: #166534; }
+  .badge-red    { background: #fee2e2; color: #991b1b; }
+  .badge-yellow { background: #fef9c3; color: #854d0e; }
+  .badge-blue   { background: #dbeafe; color: #1e40af; }
+  .badge-purple { background: #ede9fe; color: #5b21b6; }
+  .badge-grey   { background: #f3f4f6; color: #6b7280; }
+
+  /* ── Concept boxes ─── */
+  .concept-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 14px;
+    margin-bottom: 24px;
+  }
+  .concept-box {
+    border: 1px solid #e5e7eb;
+    border-radius: 10px;
+    padding: 14px 16px;
+  }
+  .concept-box h4 {
+    font-size: 13px;
+    font-weight: 700;
+    margin-bottom: 6px;
+  }
+  .concept-box p {
+    font-size: 11.5px;
+    color: #4b5563;
+    line-height: 1.55;
+  }
+  .concept-box .tag {
+    display: inline-block;
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .06em;
+    margin-bottom: 6px;
+    padding: 1px 6px;
+    border-radius: 4px;
+  }
+
+  /* ── Flow box ─── */
+  .flow {
+    background: #0f172a;
+    color: #e2e8f0;
+    border-radius: 10px;
+    padding: 18px 20px;
+    font-family: 'Consolas', monospace;
+    font-size: 11.5px;
+    line-height: 1.8;
+    margin-bottom: 20px;
+    white-space: pre;
+    overflow-x: auto;
+  }
+  .flow .c-purple { color: #c4b5fd; }
+  .flow .c-green  { color: #86efac; }
+  .flow .c-yellow { color: #fde68a; }
+  .flow .c-red    { color: #fca5a5; }
+  .flow .c-blue   { color: #93c5fd; }
+  .flow .c-grey   { color: #94a3b8; }
+
+  /* ── Warning box ─── */
+  .warn {
+    background: #fff7ed;
+    border: 1px solid #fed7aa;
+    border-radius: 8px;
+    padding: 12px 16px;
+    font-size: 12px;
+    color: #7c2d12;
+    margin-bottom: 20px;
+  }
+  .warn strong { display: block; margin-bottom: 3px; color: #9a3412; }
+
+  /* ── Footer ─── */
+  footer {
+    margin-top: 40px;
+    padding-top: 16px;
+    border-top: 1px solid #e5e7eb;
+    font-size: 11px;
+    color: #9ca3af;
+    display: flex;
+    justify-content: space-between;
+  }
+
+  @media print {
+    body { padding: 20px 24px; }
+    .concept-grid { grid-template-columns: repeat(3, 1fr); }
+    a { text-decoration: none; }
+  }
+</style>
+</head>
+<body>
+
+<h1>YTSearch — Video Metadata Sources</h1>
+<p class="subtitle">Reference guide · Which component writes each field · Generated 2026-05-15</p>
+
+<!-- ── Concept definitions ─────────────────────────────────────────── -->
+<h2>Core Concepts</h2>
+<div class="concept-grid">
+
+  <div class="concept-box">
+    <span class="tag" style="background:#dbeafe;color:#1e40af;">YouTube API</span>
+    <h4>yt_category_id</h4>
+    <p>YouTube's own numeric label assigned to every video (e.g. <code>"28"</code> = Science &amp; Technology, <code>"27"</code> = Education). Only available via the YouTube Data API — never from the DOM or the extension.</p>
+  </div>
+
+  <div class="concept-box">
+    <span class="tag" style="background:#ede9fe;color:#5b21b6;">Classifier</span>
+    <h4>industry</h4>
+    <p>Your own classification slug (<code>programming</code>, <code>education</code>, <code>business</code>, <code>creative</code>, <code>fitness</code>). Derived by <code>VideoClassifier</code> using 4 cascading levels. Never comes directly from YouTube.</p>
+  </div>
+
+  <div class="concept-box">
+    <span class="tag" style="background:#dcfce7;color:#166534;">Multiple Sources</span>
+    <h4>channel</h4>
+    <p>The YouTube channel entity (name, real ID, subscribers). Extension creates a <em>placeholder</em> row from the DOM. Crawler populates the real row from the YouTube API with full metadata and <code>is_monitored=true</code>.</p>
+  </div>
+
+</div>
+
+<!-- ── videos table ────────────────────────────────────────────────── -->
+<h2>videos table — field origin</h2>
+<table>
+  <thead>
+    <tr>
+      <th>Field</th>
+      <th>Extension fast-index</th>
+      <th>Pipeline (Celery / run_indexing)</th>
+      <th>Crawler / Scheduler</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>youtube_video_id</td>
+      <td>URL <code>?v=XYZ</code></td>
+      <td>from <code>IndexingJob</code></td>
+      <td>YouTube API</td>
+    </tr>
+    <tr>
+      <td>title</td>
+      <td><span class="badge badge-yellow">DOM</span> <code>document.title</code></td>
+      <td><span class="badge badge-blue">YouTube API</span> <code>get_videos_meta()</code></td>
+      <td><span class="badge badge-blue">YouTube API</span></td>
+    </tr>
+    <tr>
+      <td>description</td>
+      <td><span class="badge badge-red">❌ never set</span></td>
+      <td><span class="badge badge-blue">YouTube API</span> <code>get_videos_meta()</code></td>
+      <td><span class="badge badge-blue">YouTube API</span></td>
+    </tr>
+    <tr>
+      <td>thumbnail_url</td>
+      <td><span class="badge badge-green">✅ deterministic</span> <code>img.youtube.com/vi/{id}/hqdefault.jpg</code></td>
+      <td><span class="badge badge-blue">YouTube API</span> <code>get_videos_meta()</code></td>
+      <td><span class="badge badge-blue">YouTube API</span></td>
+    </tr>
+    <tr>
+      <td>duration_seconds</td>
+      <td><span class="badge badge-red">❌ never set</span></td>
+      <td><span class="badge badge-blue">YouTube API</span> ISO 8601 parsed</td>
+      <td><span class="badge badge-blue">YouTube API</span></td>
+    </tr>
+    <tr>
+      <td>view_count</td>
+      <td><span class="badge badge-red">❌ never set</span></td>
+      <td><span class="badge badge-blue">YouTube API</span></td>
+      <td><span class="badge badge-blue">YouTube API</span></td>
+    </tr>
+    <tr>
+      <td>published_at</td>
+      <td><span class="badge badge-red">❌ never set</span></td>
+      <td><span class="badge badge-blue">YouTube API</span></td>
+      <td><span class="badge badge-blue">YouTube API</span></td>
+    </tr>
+    <tr>
+      <td>tags</td>
+      <td><span class="badge badge-red">❌ never set</span></td>
+      <td><span class="badge badge-blue">YouTube API</span></td>
+      <td><span class="badge badge-blue">YouTube API</span></td>
+    </tr>
+    <tr>
+      <td>yt_category_id</td>
+      <td><span class="badge badge-red">❌ never set</span></td>
+      <td><span class="badge badge-blue">YouTube API</span> <code>snippet.categoryId</code></td>
+      <td><span class="badge badge-blue">YouTube API</span></td>
+    </tr>
+    <tr>
+      <td>channel_id (FK)</td>
+      <td><span class="badge badge-yellow">DOM</span> <code>#channel-name a</code> → find/create channels row</td>
+      <td>from <code>IndexingJob.channel_id</code> set by scheduler</td>
+      <td>set by <code>scan_channels</code> when queuing job</td>
+    </tr>
+    <tr>
+      <td>primary_industry_id (FK)</td>
+      <td><span class="badge badge-purple">Classifier</span> Level 1→3→4 on title</td>
+      <td><span class="badge badge-purple">Classifier</span> Level 1→2→3→4 on title + description</td>
+      <td><span class="badge badge-purple">Sunday cron</span> reclassify_uncategorised</td>
+    </tr>
+    <tr>
+      <td>embedding (vector 384)</td>
+      <td>gRPC server — mean of chunk vectors</td>
+      <td>Local <code>EmbeddingModel</code> — mean of chunk vectors</td>
+      <td>—</td>
+    </tr>
+    <tr>
+      <td>indexing_status</td>
+      <td><code>pending → processing → indexed</code></td>
+      <td><code>pending → processing → indexed</code></td>
+      <td>—</td>
+    </tr>
+  </tbody>
+</table>
+
+<!-- ── channels table ──────────────────────────────────────────────── -->
+<h2>channels table — field origin</h2>
+<table>
+  <thead>
+    <tr>
+      <th>Field</th>
+      <th>Extension fast-index</th>
+      <th>Scheduler discover_channels</th>
+      <th>Scheduler scan_channels</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>youtube_channel_id</td>
+      <td><span class="badge badge-red">⚠️ fake</span> <code>ext_{yt_id[:12]}</code></td>
+      <td><span class="badge badge-green">real</span> from YouTube API</td>
+      <td>already set</td>
+    </tr>
+    <tr>
+      <td>name</td>
+      <td><span class="badge badge-yellow">DOM</span> <code>#channel-name a</code></td>
+      <td><span class="badge badge-blue">YouTube API</span> <code>get_channel_meta()</code></td>
+      <td>already set</td>
+    </tr>
+    <tr>
+      <td>description</td>
+      <td><span class="badge badge-red">❌ never set</span></td>
+      <td><span class="badge badge-blue">YouTube API</span></td>
+      <td>already set</td>
+    </tr>
+    <tr>
+      <td>thumbnail_url</td>
+      <td><span class="badge badge-red">❌ never set</span></td>
+      <td><span class="badge badge-blue">YouTube API</span></td>
+      <td>already set</td>
+    </tr>
+    <tr>
+      <td>subscriber_count</td>
+      <td><span class="badge badge-red">❌ never set</span></td>
+      <td><span class="badge badge-blue">YouTube API</span> (min 10,000 to be stored)</td>
+      <td>already set</td>
+    </tr>
+    <tr>
+      <td>is_monitored</td>
+      <td><span class="badge badge-red">False (default)</span></td>
+      <td><span class="badge badge-green">True</span></td>
+      <td>already True</td>
+    </tr>
+    <tr>
+      <td>primary_industry_id</td>
+      <td><span class="badge badge-red">❌ never set</span></td>
+      <td><span class="badge badge-red">❌ never set</span></td>
+      <td><span class="badge badge-red">❌ never set</span></td>
+    </tr>
+    <tr>
+      <td>last_crawled_at</td>
+      <td><span class="badge badge-red">❌ never set</span></td>
+      <td><span class="badge badge-red">❌ never set</span></td>
+      <td><span class="badge badge-green">✅ updated each scan</span></td>
+    </tr>
+  </tbody>
+</table>
+
+<!-- ── Classifier flow ──────────────────────────────────────────────── -->
+<h2>VideoClassifier — 4-level cascade</h2>
+
+<table>
+  <thead>
+    <tr>
+      <th>Level</th>
+      <th>Method</th>
+      <th>Input needed</th>
+      <th>Accuracy</th>
+      <th>Coverage</th>
+      <th>Available in extension?</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>1</td>
+      <td>Channel inheritance</td>
+      <td><code>channel.primary_industry_id</code></td>
+      <td><span class="badge badge-green">95%</span></td>
+      <td>~80% of videos</td>
+      <td><span class="badge badge-green">✅ yes</span> — if channel was previously classified</td>
+    </tr>
+    <tr>
+      <td>2</td>
+      <td>YouTube categoryId map</td>
+      <td><code>yt_category_id</code></td>
+      <td><span class="badge badge-yellow">70%</span></td>
+      <td>~15% of videos</td>
+      <td><span class="badge badge-red">❌ no</span> — categoryId not available from DOM</td>
+    </tr>
+    <tr>
+      <td>3</td>
+      <td>Keyword matching</td>
+      <td>title + description text</td>
+      <td><span class="badge badge-yellow">60%</span></td>
+      <td>~4% of videos</td>
+      <td><span class="badge badge-green">✅ yes</span> — title from DOM, description empty</td>
+    </tr>
+    <tr>
+      <td>4</td>
+      <td>Embedding cosine similarity</td>
+      <td>title+description vector + industry vectors from DB</td>
+      <td><span class="badge badge-blue">80%</span></td>
+      <td>fallback</td>
+      <td><span class="badge badge-green">✅ yes</span> — uses gRPC embedding client</td>
+    </tr>
+  </tbody>
+</table>
+
+<!-- ── Data flow diagram ────────────────────────────────────────────── -->
+<h2>End-to-end data flow</h2>
+
+<div class="flow"><span class="c-yellow">THREE PATHS THAT WRITE video + channel ROWS</span>
+
+<span class="c-purple">PATH A — Chrome Extension (user opens a YouTube video)</span>
+  DOM: title, channel_name
+       ↓
+  GET /api/video/{yt_id}/index/stream?title=...&channel=...
+       ↓
+  video.py:
+    Channel row → find by name OR create with <span class="c-red">fake</span> youtube_channel_id "ext_..."
+    Video  row  → title (DOM), thumbnail_url (deterministic), is_monitored=False
+    classify    → Level 1 (channel) → Level 3 (keyword) → Level 4 (gRPC embed)
+    transcript  → fetch_transcript(fast=True)
+    chunks      → chunk + embed via gRPC → insert transcript_chunks
+    UPDATE videos SET indexing_status='indexed', embedding=mean(chunks)
+
+<span class="c-purple">PATH B — Scheduler + Pipeline (Celery / run_indexing.py)</span>
+  IndexingJob row exists (put there by fetch_trending / scan_channels)
+       ↓
+  IndexingPipeline.run(job):
+    Video row → <span class="c-green">YouTube API</span> _enrich_video_metadata():
+                  title, description, thumbnail_url, duration_seconds,
+                  view_count, tags, yt_category_id, published_at
+    classify  → Level 1 → <span class="c-green">Level 2 (categoryId)</span> → Level 3 → Level 4
+    transcript → fetch_transcript()
+    chunks    → chunk + embed via LOCAL EmbeddingModel → insert transcript_chunks
+    UPDATE videos SET indexing_status='indexed', embedding=mean(chunks)
+
+<span class="c-purple">PATH C — Crawler only (no indexing, just channel/video discovery)</span>
+  Scheduler: discover_channels (daily midnight)
+    YouTube search().list(type=channel) → channel IDs
+    get_channel_meta() → name, description, thumbnail_url, subscriber_count
+    INSERT channels (is_monitored=True, subscriber_count >= 10,000)
+
+  Scheduler: scan_monitored_channels (every 6 hours)
+    SELECT channels WHERE is_monitored=True
+    get_channel_video_ids(since=last_crawled_at)
+    INSERT IndexingJob (channel_id, industry_id from channel, priority=7)
+    ← Jobs are then processed by PATH B (drain_queue every 5 min)</div>
+
+<!-- ── Known gaps ───────────────────────────────────────────────────── -->
+<h2>Known gaps — extension vs pipeline</h2>
+
+<div class="warn">
+  <strong>⚠️ Extension channel rows are placeholders</strong>
+  The extension creates a <code>channels</code> row with a fake <code>youtube_channel_id</code>
+  (<code>ext_dQw4w9WgXc</code>). If the crawler later discovers the same real channel,
+  it creates a second row with the real ID. The video's <code>channel_id</code> stays pointing
+  at the fake row — they are never merged. This means <code>scan_monitored_channels</code>
+  will never pick up these channels for future video discovery.
+</div>
+
+<table>
+  <thead>
+    <tr>
+      <th>Field</th>
+      <th>Gap</th>
+      <th>Impact</th>
+      <th>Fix difficulty</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>description</td>
+      <td>Not set in extension path</td>
+      <td>Level 3 keyword match uses title only — lower accuracy</td>
+      <td><span class="badge badge-yellow">Medium</span> — need YouTube API key in extension context</td>
+    </tr>
+    <tr>
+      <td>yt_category_id</td>
+      <td>Not set in extension path</td>
+      <td>Level 2 classifier skipped — falls through to keyword/embedding</td>
+      <td><span class="badge badge-yellow">Medium</span> — need YouTube API call server-side</td>
+    </tr>
+    <tr>
+      <td>duration_seconds / view_count</td>
+      <td>Not set in extension path</td>
+      <td>No current UI use — low priority</td>
+      <td><span class="badge badge-green">Easy</span> — one YouTube API call</td>
+    </tr>
+    <tr>
+      <td>channel youtube_channel_id</td>
+      <td>Fake ID (<code>ext_...</code>) in extension path</td>
+      <td>Channel never monitored for future videos</td>
+      <td><span class="badge badge-red">Hard</span> — need real channel ID from YouTube API or DOM</td>
+    </tr>
+    <tr>
+      <td>channel primary_industry_id</td>
+      <td>Never set in any automated path</td>
+      <td>Level 1 classifier never fires unless set manually</td>
+      <td><span class="badge badge-yellow">Medium</span> — propagate from video after classification</td>
+    </tr>
+  </tbody>
+</table>
+
+<footer>
+  <span>YTSearch project — video_metadata_sources.html</span>
+  <span>Open in browser → Ctrl+P → Save as PDF</span>
+</footer>
+
+</body>
+</html>

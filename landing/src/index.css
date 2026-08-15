@@ -1,0 +1,48 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  @apply bg-ink text-zinc-300 font-sans antialiased;
+  /* faint fixed vignette so the page never looks flat */
+  background-image: radial-gradient(
+    60% 50% at 50% 0%,
+    rgba(139, 92, 246, 0.1),
+    transparent 70%
+  );
+  background-attachment: fixed;
+}
+
+/* Consistent focus ring on the dark theme */
+:focus-visible {
+  @apply outline-none ring-2 ring-accent ring-offset-2 ring-offset-ink;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+  .bg-shimmer {
+    background: linear-gradient(
+      90deg,
+      transparent,
+      rgba(139, 92, 246, 0.14),
+      transparent
+    );
+    background-size: 200% 100%;
+  }
+}

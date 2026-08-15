@@ -1,0 +1,25 @@
+{
+  "manifest_version": 3,
+  "name": "YTSearch",
+  "description": "Semantic search inside any YouTube video",
+  "version": "1.0.0",
+  "permissions": ["activeTab", "storage"],
+  "host_permissions": [
+    "*://www.youtube.com/*",
+    "http://localhost:8080/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["*://www.youtube.com/watch*"],
+      "js": ["content.js"],
+      "css": ["content.css"],
+      "run_at": "document_idle"
+    }
+  ],
+  "action": {
+    "default_title": "YTSearch"
+  }
+}
