@@ -17,12 +17,24 @@ front/.env.*.local
 **/.env
 **/secrets.*
 
-# ── Frontend ──────────────────────────────────────────────────────────────────
+# ── Frontend: front/ (stale scaffold) ─────────────────────────────────────────
 front/node_modules/
 front/.next/
 front/out/
 front/*.tsbuildinfo
 front/next-env.d.ts
+
+# ── Frontend: web/ (Next.js product app) ──────────────────────────────────────
+web/node_modules/
+web/.next/
+web/out/
+web/*.tsbuildinfo
+web/next-env.d.ts
+
+# ── Frontend: landing/ (Vite marketing site) ──────────────────────────────────
+landing/node_modules/
+landing/dist/
+landing/*.local
 
 # ── IDE / OS ──────────────────────────────────────────────────────────────────
 .idea/

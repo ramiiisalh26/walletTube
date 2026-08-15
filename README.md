@@ -1,371 +1,224 @@
-# YTSearch — YouTube AI Semantic Search Engine
+# Recall — Searchable Memory for How to Do Anything
 
-A full-stack AI-powered search engine that indexes YouTube video transcripts and enables semantic search over them. The entire backend is **Python + FastAPI** — Java has been retired.
+> Find the exact moment anyone explained it.
 
----
+Recall is an AI-powered semantic search engine for video knowledge. Instead of
+returning whole videos, it finds the **precise moment** — down to a few seconds —
+where something is explained or demonstrated, and takes you straight there. When
+no video moment exists yet, it falls back to an AI text answer, so a search is
+**never a dead end**.
 
-## Architecture
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                        Client / Frontend                        │
-└────────────────────────────┬────────────────────────────────────┘
-                             │ HTTP  :8080
-┌────────────────────────────▼────────────────────────────────────┐
-│           python-search  (FastAPI — api/main.py)                │
-│  /api/auth   /api/search   /api/user   /api/billing             │
-│  /api/ingestion  (admin)                                        │
-└──┬───────────┬──────────────┬──────────────┬────────────────────┘
-   │ asyncpg   │ redis.asyncio │ grpc         │ confluent-kafka
-   ▼           ▼               ▼              ▼
-PostgreSQL   Redis 7        python-grpc    Kafka (KRaft)
-+ pgvector   (cache +       (BAAI/bge      (event bus)
-             rate limit +   -small-en)
-             ingest queue)
-                                ▲
-                python-worker ──┘  (Celery indexing pipeline)
-                python-beat        (Celery Beat scheduler)
-                python-kafka       (Kafka consumer)
-                python-api  :8001  (admin endpoints)
-```
+The engine launches first for **programming** (developers learning from YouTube
+tutorials), but the architecture is field-agnostic: the same pipeline that finds
+a `NullPointerException` fix can find a guitar chord change, a suture technique, a
+recipe step, or a calculus proof.
 
 ---
 
-## Services
+## The problem
 
-| Service | Port | Description |
-|---------|------|-------------|
-| `python-search` | **8080** | User-facing FastAPI API (auth, search, user, billing, ingestion) |
-| `python-api` | 8001 | Internal admin API (indexing queue management) |
-| `python-grpc` | 50051 | gRPC embedding server (BAAI/bge-small-en-v1.5, 384 dims) |
-| `python-worker` | — | Celery workers — transcript fetch → chunk → embed → store |
-| `python-beat` | — | Celery Beat cron scheduler |
-| `python-kafka` | — | Kafka consumer (search.miss, video.index.request, etc.) |
-| `postgres` | 5432 | PostgreSQL 16 + pgvector |
-| `redis` | 6379 | Cache + Celery broker + ingestion queue + quota tracking |
-| `kafka` | 9094 | Kafka 3.7 KRaft (no Zookeeper) |
+Human knowledge is trapped inside millions of hours of video. You watch a
+40-minute tutorial that explains something perfectly — then later you can't find
+*which* video it was, or *where* in it the key moment happened. Keyword search
+matches titles and tags, not what is actually said on screen. Scrubbing back and
+forth isn't search — it's guessing.
 
----
+## The idea
 
-## Quick Start
-
-### Prerequisites
-- Docker and Docker Compose
-- (Optional) YouTube Data API v3 key for video discovery
-
-### 1. Configure environment
-
-Create `python/.env`:
-
-```env
-DATABASE_URL=postgresql+asyncpg://ytsearch:ytsearch_dev@postgres:5432/ytsearch
-REDIS_URL=redis://:redis_dev@redis:6379/0
-KAFKA_BOOTSTRAP_SERVERS=kafka:9092
-
-JWT_SECRET=change-this-to-a-long-random-string-in-production
-JWT_EXPIRY_MINUTES=15
-JWT_REFRESH_EXPIRY_DAYS=7
-
-EMBEDDING_GRPC_CLIENT_HOST=python-grpc
-EMBEDDING_GRPC_CLIENT_PORT=50051
-
-YOUTUBE_API_KEY=your-key-here
-
-STRIPE_SECRET_KEY=sk_test_...
-STRIPE_WEBHOOK_SECRET=whsec_...
-STRIPE_PRO_PRICE_ID=price_...
-STRIPE_TEAM_PRICE_ID=price_...
-```
-
-### 2. Start all services
-
-```bash
-docker compose up -d
-```
-
-### 3. Apply database schema (first run)
-
-```bash
-docker compose exec postgres \
-  psql -U ytsearch -d ytsearch -f /docker-entrypoint-initdb.d/schema.sql
-```
-
-### 4. Verify
-
-```bash
-curl http://localhost:8080/health
-# {"status":"ok","db":"ok","version":"2.0.0"}
-
-# Interactive API docs
-open http://localhost:8080/docs
-```
+Recall reads the **spoken content** of thousands of videos, understands a
+question asked in plain language, and returns the exact timestamped moment that
+answers it — a real human, verified and watchable. If nothing matches well
+enough, it generates an AI answer and quietly queues more videos to index for
+next time.
 
 ---
 
-## API Reference
+## How it works (conceptually)
 
-### Authentication — `/api/auth`
-
-| Method | Endpoint | Auth | Body |
-|--------|----------|------|------|
-| `POST` | `/api/auth/register` | Public | `{email, password, name}` |
-| `POST` | `/api/auth/login` | Public | `{email, password}` |
-| `POST` | `/api/auth/refresh` | Header: `X-Refresh-Token: <token>` | — |
-
-**Response:**
-```json
-{
-  "access_token": "eyJ...",
-  "refresh_token": "eyJ...",
-  "token_type": "bearer",
-  "email": "user@example.com",
-  "name": "Alice"
-}
-```
+1. **Ask in plain language.** Type a question, describe what you need, or paste an
+   error message.
+2. **Search inside the videos.** Recall embeds the query and compares it against
+   embeddings of every transcript chunk across the indexed catalogue — matching
+   meaning, not keywords.
+3. **Land on the moment.** Results are ranked, refined, and returned as precise
+   timestamps that deep-link into the video at the exact second.
+4. **Never empty.** If too few strong matches exist, an AI answer is shown and the
+   query is published as a "search miss" event so the missing videos get indexed.
 
 ---
 
-### Search — `/api/search`
+## System architecture
 
-| Method | Endpoint | Auth | Description |
-|--------|----------|------|-------------|
-| `POST` | `/api/search` | Optional JWT | Semantic search over transcripts |
-| `POST` | `/api/search/click` | Optional JWT | Record click (re-ranking signal) |
+Recall is a multi-service system. The backend was originally built in Java Spring
+Boot and has been fully re-implemented in Python / FastAPI.
 
-**Request:**
-```json
-{
-  "query": "how to implement binary search tree",
-  "industry": "programming",
-  "page": 0,
-  "size": 10
-}
+```mermaid
+flowchart TD
+    U[User] -->|search| WEB[Web app - Next.js]
+    U -->|discover| LAND[Landing site - Vite]
+    WEB -->|POST /api/search| API[FastAPI user API :8080]
+
+    API --> REDIS[(Redis - cache, quota, gate)]
+    API -->|embed query| GRPC[gRPC embedding server :50051]
+    API --> PG[(PostgreSQL + pgvector)]
+    API -->|search.miss event| KAFKA[(Kafka)]
+
+    KAFKA --> CONSUMER[Kafka consumer]
+    CONSUMER --> CELERY[Celery workers]
+    BEAT[Celery Beat scheduler] --> CELERY
+    CELERY -->|fetch + embed + store| PG
+    CELERY -->|track quota| REDIS
+    CELERY -->|YouTube Data API| YT[YouTube]
 ```
 
-**Response:**
-```json
-{
-  "query": "how to implement binary search tree",
-  "total_results": 14,
-  "source": "indexed",
-  "latency_ms": 87,
-  "indexing_more": false,
-  "results": [
-    {
-      "video_id": "dQw4w9WgXcQ",
-      "title": "Binary Search Trees Explained",
-      "thumbnail_url": "https://i.ytimg.com/vi/...",
-      "channel_name": "CS Dojo",
-      "text": "...so the left child is always smaller than the parent...",
-      "start_time": 142.5,
-      "end_time": 172.5,
-      "view_count": 850000,
-      "similarity": 0.823,
-      "youtube_url": "https://youtu.be/dQw4w9WgXcQ?t=142"
-    }
-  ]
-}
-```
+### Services
 
-**Industry values:** `programming` · `business` · `education` · `creative` · `fitness`
-
-**Hybrid scoring formula:**
-```
-score = (0.7 × cosine_similarity) + (0.3 × ts_rank)
-boost = +0.05 if view_count > 100,000
-```
+| Service | Role |
+| --- | --- |
+| **FastAPI user API** (`:8080`) | Public REST API — search, auth, billing, user, analytics, clips, and Chrome-extension endpoints. |
+| **FastAPI admin API** (`:8001`) | Internal administration and pipeline control. |
+| **gRPC embedding server** (`:50051`) | Turns text into vectors using `BAAI/bge-base-en-v1.5` (768 dimensions). |
+| **PostgreSQL + pgvector** | Primary datastore and vector similarity search. |
+| **Redis** | Search-result cache, YouTube API quota tracking, anonymous free-tier gate, and Celery broker. |
+| **Kafka** (KRaft mode) | Event bus decoupling search from background indexing. |
+| **Celery Worker + Beat** | Background indexing jobs and scheduled crawls. |
 
 ---
 
-### User — `/api/user`
+## The search pipeline
 
-All endpoints require `Authorization: Bearer <access_token>`.
+A single query flows through a carefully staged pipeline designed for both
+**relevance** and **speed** (sub-second latency budget):
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `GET` | `/api/user/me` | Profile + active plan details |
-| `GET` | `/api/user/history?page=0&size=20` | Paginated search history |
-| `POST` | `/api/user/saves/{youtubeVideoId}` | Save a video |
-| `DELETE` | `/api/user/saves/{youtubeVideoId}` | Unsave a video |
-
----
-
-### Billing — `/api/billing`
-
-| Method | Endpoint | Auth | Description |
-|--------|----------|------|-------------|
-| `POST` | `/api/billing/checkout` | JWT | Create Stripe checkout session |
-| `POST` | `/api/billing/webhook` | Stripe-Signature header | Handle subscription lifecycle events |
-
-**Checkout:**
-```json
-{ "price_id": "price_pro_monthly" }
-// → { "url": "https://checkout.stripe.com/..." }
-```
-
-**Subscription plans:**
-
-| Plan | Price | Searches/day | API access |
-|------|-------|--------------|------------|
-| Free | $0    | 10           | No         |
-| Pro  | $8/mo | Unlimited    | No         |
-| Team | $29/mo| Unlimited    | Yes        |
+1. **Cache check** — identical recent queries return instantly from Redis (6-hour TTL).
+2. **Usage gate** — enforces per-plan search limits (only when monetization is enabled).
+3. **Query embedding** — the query is expanded (abbreviations, compound "X vs Y"
+   splitting) and embedded via the gRPC server.
+4. **Industry & topic routing** — the query vector is matched against industry and
+   topic embeddings to narrow the candidate video pool.
+5. **Chunk retrieval** — cosine similarity over transcript chunks in pgvector, using
+   a quality **threshold** (≥ 0.75) with a top-N fallback for rare/long-tail queries.
+6. **Re-ranking** — an optional cross-encoder re-scores candidates at the sentence
+   level for pinpoint timestamps.
+7. **Language disambiguation** — demotes wrong-language matches (e.g. keeps "Java"
+   from being outranked by "JavaScript").
+8. **Miss handling** — if too few high-quality results exist, a `search.miss` event
+   is published to Kafka to index more videos.
+9. **Analytics & cache** — the event is recorded, popular searches updated, and the
+   response cached before return.
 
 ---
 
-### Ingestion — `/api/ingestion` (Admin)
+## Content ingestion
 
-Requires Team plan.
+Recall continuously grows its catalogue through an automated pipeline:
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `POST` | `/api/ingestion/discover?query=...` | Search YouTube + enqueue new videos |
-| `GET` | `/api/ingestion/status` | Job counts + Redis queue size + quota remaining |
-
-```json
-// GET /api/ingestion/status
-{
-  "jobs_pending": 12,
-  "jobs_processing": 3,
-  "jobs_done": 4821,
-  "jobs_failed": 7,
-  "redis_queue_size": 48,
-  "quota_remaining": 8200
-}
-```
+- **Discovery** — finds new videos and channels via the YouTube Data API, trending
+  feeds, topic rotation, and bulk discovery (yt-dlp + curated lists).
+- **Quota safety** — every YouTube API call is metered against a daily quota tracked
+  atomically in Redis, so the system never exceeds its allowance.
+- **Transcript fetching** — pulls captions (with proxy/cookie support to avoid rate
+  limits); videos without captions are queued for local Whisper transcription.
+- **Chunking** — transcripts are split into two levels: small child chunks (embedded
+  and searched) nested inside larger parent chunks (used for surrounding context).
+- **Embedding & indexing** — chunks are embedded and stored in pgvector; each video
+  gets an aggregate embedding, an auto-detected industry, and topic assignments.
+- **Scheduled jobs** (Celery Beat) — hourly trending fetch, 6-hourly channel scans,
+  5-minute queue drain, daily channel discovery, and weekly re-classification.
 
 ---
 
-## Project Structure
+## Applications
+
+The repository contains three front-facing pieces plus the backend:
+
+### `python/` — Backend
+FastAPI services, the gRPC embedding server, the Celery indexing pipeline, Kafka
+consumer, scheduled workers, and the PostgreSQL/pgvector data layer. Key modules:
+authentication (JWT), hybrid search, billing (Stripe), analytics, saved clips,
+ingestion, and Chrome-extension support.
+
+### `web/` — Product web app (Next.js 14, App Router)
+The actual product interface (`:3000`). Includes a landing page, the live search
+experience with inline video playback deep-linked to timestamps, a pricing page,
+and per-video pages. Talks directly to the FastAPI search API. Ships with a
+feature-flagged monetization gate (free daily search limit + upgrade prompts)
+that stays hidden until billing is switched on.
+
+### `landing/` — Marketing site (React + Vite)
+A cinematic single-page launch site (`:5173`) aimed at Product Hunt / Hacker News
+/ Reddit traffic. Opens with the universal vision, narrows to the live programming
+demo, and converts visitors to a waitlist. Fully animated (Framer Motion),
+responsive, accessible, and reduced-motion aware. All copy is centralized for easy
+editing.
+
+---
+
+## Monetization model
+
+Recall uses a **volume-gated freemium** model (currently disabled behind a single
+feature flag until launch is ready):
+
+| Tier | Price | What you get |
+| --- | --- | --- |
+| **Free** | $0 | A limited number of searches per day, no account required (tracked per browser session). |
+| **Pro** | $19 / month | Unlimited searches, full history, saved clips, priority results. |
+
+Billing is powered by Stripe (checkout + webhooks). When the billing flag is off,
+the product is fully open with no limits or upgrade prompts.
+
+---
+
+## Technology stack
+
+**Backend:** Python, FastAPI, SQLAlchemy (async), PostgreSQL 16 + pgvector, Redis,
+Kafka (KRaft), Celery + Celery Beat, gRPC, sentence-transformers
+(`BAAI/bge-base-en-v1.5`), a cross-encoder re-ranker, faster-whisper, Stripe,
+python-jose (JWT), yt-dlp / youtube-transcript-api.
+
+**Web app:** Next.js 14 (App Router), React 18, TypeScript, Tailwind CSS,
+lucide-react.
+
+**Landing site:** React 18, Vite, TypeScript, Tailwind CSS, Framer Motion,
+lucide-react.
+
+---
+
+## Project structure
 
 ```
 YT/
-├── python/
-│   ├── api/                        # FastAPI user-facing API (port 8080)
-│   │   ├── main.py                 # App entry point + CORS + error handlers
-│   │   ├── dependencies.py         # DB session, Redis, JWT auth DI
-│   │   ├── schemas/
-│   │   │   ├── auth.py             # RegisterRequest, LoginRequest, AuthResponse
-│   │   │   ├── search.py           # SearchRequest, SearchResponse, SearchResult
-│   │   │   ├── user.py             # UserProfile, PaginatedHistory, ClickRequest
-│   │   │   └── billing.py          # CheckoutRequest, CheckoutResponse
-│   │   ├── services/
-│   │   │   ├── jwt_service.py      # HS256 token create/decode/hash
-│   │   │   ├── auth_service.py     # register, login, refresh (BCrypt + JWT)
-│   │   │   ├── search_service.py   # 12-step search orchestration pipeline
-│   │   │   ├── embedding_client.py # gRPC EmbedOne client (asyncio.to_thread)
-│   │   │   ├── user_service.py     # profile, saves, history, interest update
-│   │   │   ├── billing_service.py  # Stripe checkout session + webhook handler
-│   │   │   ├── analytics_service.py# Async popular-search / click / interaction
-│   │   │   ├── ingestion_service.py# YouTube discovery, Redis queue, quota Lua
-│   │   │   └── kafka_producer.py   # publish search.miss / index.request / etc.
-│   │   └── routers/
-│   │       ├── auth.py             # POST /api/auth/{register,login,refresh}
-│   │       ├── search.py           # POST /api/search, /api/search/click
-│   │       ├── user.py             # /api/user/{me,history,saves}
-│   │       ├── billing.py          # /api/billing/{checkout,webhook}
-│   │       └── ingestion.py        # /api/ingestion/{discover,status}
-│   │
-│   ├── db/
-│   │   ├── session.py              # Async SQLAlchemy engine + session factory
-│   │   └── models.py               # All ORM models (users, videos, transcripts…)
-│   │
-│   ├── services/
-│   │   ├── embedding/              # gRPC server (python-grpc container)
-│   │   │   ├── model.py            # BAAI/bge-small-en-v1.5 singleton
-│   │   │   └── server.py           # EmbedOne / EmbedBatch RPC handlers
-│   │   ├── transcript/
-│   │   │   ├── fetcher.py          # youtube-transcript-api + yt-dlp fallback
-│   │   │   └── chunker.py          # 30-second overlapping chunks
-│   │   ├── classifier/
-│   │   │   └── classifier.py       # 4-level industry classification cascade
-│   │   ├── indexing/
-│   │   │   ├── pipeline.py         # 10-step indexing pipeline
-│   │   │   └── worker.py           # Celery tasks
-│   │   └── crawler/
-│   │       └── channel_crawler.py  # YouTube Data API channel/trending crawler
-│   │
-│   ├── workers/
-│   │   ├── scheduler.py            # Celery Beat cron jobs
-│   │   └── kafka_consumer.py       # Event consumer (search.miss, index.request…)
-│   │
-│   ├── proto/
-│   │   └── embedding.proto         # gRPC contract (EmbedOne / EmbedBatch)
-│   │
-│   ├── main.py                     # Admin FastAPI app (port 8001)
-│   ├── config.py                   # Pydantic Settings (all env vars)
-│   └── requirements.txt
-│
-├── infra/
-│   ├── db/schema.sql               # PostgreSQL schema + functions + seed data
-│   └── postgres/init.sql           # Extension setup (pgvector, pg_trgm)
-│
-└── docker-compose.yml              # All services orchestration
+├── python/            # Backend: FastAPI, gRPC, Celery, workers, data layer
+│   ├── api/           #   User-facing API (routers, services, schemas)
+│   ├── main.py        #   Admin API
+│   ├── services/      #   embedding, indexing, transcript, crawler, classifier
+│   ├── workers/       #   Kafka consumer + Celery Beat scheduler
+│   └── db/            #   Models, sessions, migrations
+├── web/               # Product web app (Next.js)
+│   └── src/           #   app/ (routes), components/, lib/, types/
+├── landing/           # Marketing landing site (Vite + React)
+│   └── src/           #   components/, hooks/, lib/ (all copy)
+└── README.md
 ```
 
 ---
 
-## Key Design Decisions
+## Vision & roadmap
 
-### Two-stage industry search
+- **Now:** Live semantic search for programming, continuous automated indexing,
+  product web app, and a launch-ready marketing site.
+- **Next:** User accounts and login, activating monetization, deployment of the full
+  service stack, and a YouTube API quota strategy for scale.
+- **Later:** Expand beyond programming — students, musicians, cooks, fitness,
+  medicine, trades, languages, designers — and add on-screen code/text
+  understanding (OCR) alongside spoken-word search.
 
-```sql
--- Stage 1: use videos.embedding (HNSW index) to narrow to top-100 videos
---          in the requested industry — avoids scanning all chunks
-WITH candidate_videos AS (
-    SELECT id FROM videos
-    WHERE primary_industry_id = $industry_id
-      AND indexing_status = 'indexed'
-    ORDER BY embedding <=> $query_vector LIMIT 100
-),
--- Stage 2: best matching chunk within those videos (hybrid scoring)
-ranked_chunks AS (
-    SELECT tc.*, 1 - (tc.embedding <=> $query_vector) AS similarity
-    FROM transcript_chunks tc
-    WHERE tc.video_id IN (SELECT id FROM candidate_videos)
-)
-```
-
-### Search caching
-
-Results cached in Redis for **6 hours** (configurable via `SEARCH_CACHE_TTL_HOURS`). Cache key = `cache:search:{md5(query::industry)}`. Cache is invalidated when new indexed videos arrive (Kafka `video.index.complete` consumer).
-
-### Plan enforcement
-
-SQL function `can_user_search(user_id)` checks `daily_usage` vs `subscription_plans.searches_per_day`. Called before embedding to avoid unnecessary gRPC hops. `increment_daily_usage(user_id)` runs after every successful search.
-
-### Async analytics
-
-All analytics writes (`popular_searches`, `search_clicks`, `video_interactions`) run as background `asyncio.Task`s — never blocking the response path.
-
-### YouTube quota guard
-
-Atomic Lua script in Redis tracks daily API quota. `EXPIREAT` set to next UTC midnight resets it automatically. 10,000 units/day → 100 video-discovery searches/day (100 units each).
-
-### Kafka event contracts (unchanged)
-
-| Topic | Producer | Consumer | Payload |
-|-------|----------|----------|---------|
-| `search.miss` | python-search | python-kafka | `{query, youtube_video_ids}` |
-| `video.index.request` | python-search | python-kafka | `{video_id, priority}` |
-| `user.video.watched` | python-search | python-kafka | `{user_id, video_id}` |
-| `channel.discover.request` | python-search | python-kafka | `{channel_id, industry_id}` |
-| `video.index.complete` | python-worker | python-kafka | `{youtube_video_id}` |
+Recall's mission: **human knowledge shouldn't be locked inside a 40-minute video.**
 
 ---
 
-## Java Migration Notes
+## Status
 
-The Java Spring Boot service is retired. `python-search` on port 8080 is a drop-in replacement:
-
-| Aspect | Java | Python |
-|--------|------|--------|
-| Framework | Spring Boot 3.3 | FastAPI 0.115 |
-| Auth | Spring Security + JJWT | python-jose HS256 |
-| DB | Spring Data JPA + JDBC | SQLAlchemy asyncio |
-| Cache | Spring Cache + Redis | redis.asyncio |
-| Kafka | Spring Kafka | confluent-kafka |
-| gRPC | grpc-java (blocking stub) | grpcio (to_thread) |
-| Billing | stripe-java SDK | stripe Python SDK |
-
-**JWT tokens are not cross-compatible** — users need to re-login after cutover.
+Actively in development. The backend search pipeline and ingestion are functional;
+the web app and landing site are built; user authentication, live monetization,
+and production deployment are the current focus.
